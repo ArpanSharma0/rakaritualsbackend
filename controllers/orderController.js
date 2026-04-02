@@ -10,11 +10,16 @@ const createOrder = async (req, res) => {
 
   // 2. Ensure cart is not empty
   if (!cart || cart.items.length === 0) {
-    res.status(400).json({ message: "Cart is empty" });
-    //throw new Error('Cart is empty');
+    return res.status(400).json({ message: "Cart is empty" });
   }
 
-  // 3. Convert cart items -> orderItems & calculate totalPrice server-side
+  // 3. Ensure shipping address is provided
+  const { shippingAddress } = req.body;
+  if (!shippingAddress) {
+    return res.status(400).json({ message: "Shipping address is required" });
+  }
+
+  // 4. Convert cart items -> orderItems & calculate totalPrice server-side
   let totalPrice = 0;
   const orderItems = cart.items.map((item) => {
     const itemPrice = item.product.price;
@@ -34,6 +39,7 @@ const createOrder = async (req, res) => {
     user: req.user._id,
     orderItems,
     totalPrice,
+    shippingAddress,
   });
 
   // 5. Clear user cart

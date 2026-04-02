@@ -12,6 +12,10 @@ const productSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    images: {
+      type: [String],
+      default: [],
+    },
     image: {
       type: String,
       required: true,
@@ -40,6 +44,16 @@ const productSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Synchronize image and images array
+productSchema.pre('save', function (next) {
+  if (this.images && this.images.length > 0 && !this.image) {
+    this.image = this.images[0];
+  } else if (this.image && (!this.images || this.images.length === 0)) {
+    this.images = [this.image];
+  }
+  next();
+});
 
 productSchema.index({ name: 'text', description: 'text', category: 'text' });
 productSchema.index({ isBestSeller: 1 });

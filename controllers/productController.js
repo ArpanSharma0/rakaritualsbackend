@@ -50,13 +50,14 @@ const getBestProducts = async (req, res) => {
 // @route   POST /api/products
 // @access  Private/Admin
 const createProduct = async (req, res) => {
-  const { name, price, description, image, category, countInStock, isBestSeller } = req.body;
+  const { name, price, description, images, image, category, countInStock, isBestSeller } = req.body;
 
   const product = new Product({
     name,
     price,
     user: req.user._id,
-    image,
+    images: images || (image ? [image] : []),
+    image: image || (images && images.length > 0 ? images[0] : ''),
     category,
     countInStock,
     description,
@@ -71,7 +72,7 @@ const createProduct = async (req, res) => {
 // @route   PUT /api/products/:id
 // @access  Private/Admin
 const updateProduct = async (req, res) => {
-  const { name, price, description, image, category, countInStock, isBestSeller } = req.body;
+  const { name, price, description, images, image, category, countInStock, isBestSeller } = req.body;
 
   const product = await Product.findById(req.params.id);
 
@@ -79,7 +80,16 @@ const updateProduct = async (req, res) => {
     product.name = name || product.name;
     product.price = price || product.price;
     product.description = description || product.description;
-    product.image = image || product.image;
+    
+    // Update images array and single image field
+    if (images) {
+      product.images = images;
+      product.image = images[0] || product.image;
+    } else if (image) {
+      product.image = image;
+      product.images = [image];
+    }
+
     product.category = category || product.category;
     product.countInStock = countInStock || product.countInStock;
     product.isBestSeller = isBestSeller !== undefined ? isBestSeller : product.isBestSeller;
