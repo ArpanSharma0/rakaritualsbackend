@@ -29,6 +29,56 @@ const orderSchema = new mongoose.Schema(
       required: true,
       default: false,
     },
+    paidAt: {
+      type: Date,
+    },
+    paymentMethod: {
+      type: String,
+      required: true,
+      default: 'Online',
+      enum: ['Online', 'COD'],
+    },
+    razorpayOrderId: {
+      type: String,
+    },
+    razorpayPaymentId: {
+      type: String,
+    },
+    razorpaySignature: {
+      type: String,
+    },
+    paymentStatus: {
+      type: String,
+      required: true,
+      default: 'Pending',
+    },
+    referralCode: {
+      type: String,
+    },
+    referral: {
+      type: String,
+    },
+    deliveryStatus: {
+      type: String,
+      required: true,
+      enum: ['Placed', 'Dispatched', 'Delivered', 'Cancelled'],
+      default: 'Placed',
+    },
+    dispatchedAt: {
+      type: Date,
+    },
+    deliveredAt: {
+      type: Date,
+    },
+    cancelledAt: {
+      type: Date,
+    },
+    cancelReason: {
+      type: String,
+    },
+    cancelComments: {
+      type: String,
+    },
     shippingAddress: {
       fullName: { type: String, required: true },
       phone: { type: String, required: true },
