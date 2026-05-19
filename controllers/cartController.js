@@ -1,4 +1,5 @@
 import Cart from '../models/Cart.js';
+import Product from '../models/Product.js';
 
 // @desc    Get logged in user cart
 // @route   GET /api/cart
@@ -16,56 +17,92 @@ const getUserCart = async (req, res) => {
 // @route   POST /api/cart
 // @access  Private
 const addToCart = async (req, res) => {
-  const { productId, quantity } = req.body;
+  try {
+    const { productId, quantity } = req.body;
 
-  let cart = await Cart.findOne({ user: req.user._id });
-
-  if (cart) {
-    const itemIndex = cart.items.findIndex(
-      (item) => item.product.toString() === productId
-    );
-
-    if (itemIndex > -1) {
-      cart.items[itemIndex].quantity += quantity;
-    } else {
-      cart.items.push({ product: productId, quantity });
+    // Validate stock before adding
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
     }
-    cart = await cart.save();
-  } else {
-    cart = await Cart.create({
-      user: req.user._id,
-      items: [{ product: productId, quantity }],
-    });
-  }
+    if (product.countInStock <= 0) {
+      return res.status(400).json({ message: `"${product.name}" is out of stock` });
+    }
 
-  res.status(201).json(cart);
+    let cart = await Cart.findOne({ user: req.user._id });
+
+    if (cart) {
+      const itemIndex = cart.items.findIndex(
+        (item) => item.product.toString() === productId
+      );
+
+      if (itemIndex > -1) {
+        const newQty = cart.items[itemIndex].quantity + quantity;
+        if (newQty > product.countInStock) {
+          return res.status(400).json({ message: `Only ${product.countInStock} available in stock` });
+        }
+        cart.items[itemIndex].quantity = newQty;
+      } else {
+        if (quantity > product.countInStock) {
+          return res.status(400).json({ message: `Only ${product.countInStock} available in stock` });
+        }
+        cart.items.push({ product: productId, quantity });
+      }
+      cart = await cart.save();
+    } else {
+      if (quantity > product.countInStock) {
+        return res.status(400).json({ message: `Only ${product.countInStock} available in stock` });
+      }
+      cart = await Cart.create({
+        user: req.user._id,
+        items: [{ product: productId, quantity }],
+      });
+    }
+
+    res.status(201).json(cart);
+  } catch (error) {
+    console.error('Error in addToCart:', error);
+    res.status(500).json({ message: error.message });
+  }
 };
 
 // @desc    Update cart item quantity
 // @route   PUT /api/cart/:productId
 // @access  Private
 const updateCartItem = async (req, res) => {
-  const { quantity } = req.body;
-  const productId = req.params.productId;
+  try {
+    const { quantity } = req.body;
+    const productId = req.params.productId;
 
-  const cart = await Cart.findOne({ user: req.user._id });
-
-  if (cart) {
-    const itemIndex = cart.items.findIndex(
-      (item) => item.product.toString() === productId
-    );
-
-    if (itemIndex > -1) {
-      cart.items[itemIndex].quantity = quantity;
-      await cart.save();
-      res.json(cart);
-    } else {
-      res.status(404);
-      throw new Error('Item not found in cart');
+    // Validate stock
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
     }
-  } else {
-    res.status(404);
-    throw new Error('Cart not found');
+    if (quantity > product.countInStock) {
+      return res.status(400).json({ message: `Only ${product.countInStock} available in stock` });
+    }
+
+    const cart = await Cart.findOne({ user: req.user._id });
+
+    if (cart) {
+      const itemIndex = cart.items.findIndex(
+        (item) => item.product.toString() === productId
+      );
+
+      if (itemIndex > -1) {
+        cart.items[itemIndex].quantity = quantity;
+        await cart.save();
+        res.json(cart);
+      } else {
+        res.status(404).json({ message: 'Item not found in cart' });
+      }
+    } else {
+      res.status(404).json({ message: 'Cart not found' });
+    }
+  } catch (error) {
+    console.error('Error in updateCartItem:', error);
+    res.status(500).json({ message: error.message });
   }
 };
 

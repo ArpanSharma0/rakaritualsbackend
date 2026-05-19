@@ -39,6 +39,11 @@ const productSchema = new mongoose.Schema(
       required: true,
       default: false,
     },
+    isCODAllowed: {
+      type: Boolean,
+      required: true,
+      default: true,
+    },
   },
   {
     timestamps: true,

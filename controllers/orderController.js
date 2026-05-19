@@ -1,5 +1,6 @@
 import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
+import Product from '../models/Product.js';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -33,7 +34,22 @@ const createOrder = async (req, res) => {
       return res.status(400).json({ message: "Shipping address is required" });
     }
 
-    // 4. Convert cart items -> orderItems & calculate totalPrice server-side
+    // 4. Validate stock and COD eligibility for all items BEFORE creating order
+    for (const item of cart.items) {
+      const product = item.product;
+      if (product.countInStock < item.quantity) {
+        return res.status(400).json({
+          message: `Insufficient stock for "${product.name}". Available: ${product.countInStock}, Requested: ${item.quantity}`,
+        });
+      }
+      if (paymentMethod === 'COD' && product.isCODAllowed === false) {
+        return res.status(400).json({
+          message: `Cash on Delivery is not allowed for product "${product.name}".`,
+        });
+      }
+    }
+
+    // 5. Convert cart items -> orderItems & calculate totalPrice server-side
     let totalPrice = 0;
     const orderItems = cart.items.map((item) => {
       const itemPrice = item.product.price;
@@ -48,7 +64,7 @@ const createOrder = async (req, res) => {
       };
     });
 
-    // 5. Save order in MongoDB
+    // 6. Save order in MongoDB
     const order = await Order.create({
       user: req.user._id,
       orderItems,
@@ -60,8 +76,15 @@ const createOrder = async (req, res) => {
       paymentStatus: paymentMethod === 'COD' ? 'COD' : 'Pending',
     });
 
-    // 6. If Cash on Delivery, complete immediately without Razorpay
+    // 7. If Cash on Delivery, reduce stock immediately and complete
     if (paymentMethod === 'COD') {
+      // Reduce stock for each ordered item
+      for (const item of orderItems) {
+        await Product.findByIdAndUpdate(item.product, {
+          $inc: { countInStock: -item.quantity },
+        });
+      }
+
       cart.items = [];
       await cart.save();
  
@@ -93,10 +116,6 @@ const createOrder = async (req, res) => {
       });
     }
 
-    // 7. Clear user cart
-    cart.items = [];
-    await cart.save();
-
     // 8. Response with both local order and Razorpay order info
     res.status(201).json({
       message: 'Order created successfully',
@@ -115,8 +134,14 @@ const createOrder = async (req, res) => {
 // @access  Private
 const getUserOrders = async (req, res) => {
   try {
-    // Fetch orders by logged-in user
-    const orders = await Order.find({ user: req.user._id })
+    // Only show confirmed orders: COD orders OR paid online orders
+    const orders = await Order.find({
+      user: req.user._id,
+      $or: [
+        { paymentMethod: 'COD' },
+        { paymentMethod: 'Online', isPaid: true },
+      ]
+    })
       .populate('orderItems.product')
       .sort({ createdAt: -1 });
     res.json(orders);
@@ -188,6 +213,20 @@ const verifyPayment = async (req, res) => {
     order.razorpaySignature = razorpay_signature;
     order.paymentStatus = 'Success';
 
+    // Reduce stock for each ordered item after successful payment
+    for (const item of order.orderItems) {
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { countInStock: -item.quantity },
+      });
+    }
+
+    // Clear user cart
+    const cart = await Cart.findOne({ user: req.user._id });
+    if (cart) {
+      cart.items = [];
+      await cart.save();
+    }
+
     const updatedOrder = await order.save();
 
     res.json({
@@ -205,7 +244,13 @@ const verifyPayment = async (req, res) => {
 // @access  Private/Admin
 const getAllOrders = async (req, res) => {
   try {
-    const orders = await Order.find({}).populate('user', 'id name email').sort({ createdAt: -1 });
+    // Only show confirmed orders: COD orders OR paid online orders
+    const orders = await Order.find({
+      $or: [
+        { paymentMethod: 'COD' },
+        { paymentMethod: 'Online', isPaid: true },
+      ]
+    }).populate('user', 'id name email').sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {
     console.error('Error in getAllOrders:', error);
@@ -241,6 +286,13 @@ const updateOrderDeliveryStatus = async (req, res) => {
     } else if (deliveryStatus === 'Cancelled') {
       order.cancelReason = 'Cancelled by Admin';
       order.cancelledAt = Date.now();
+
+      // Restore stock for each item when admin cancels the order
+      for (const item of order.orderItems) {
+        await Product.findByIdAndUpdate(item.product, {
+          $inc: { countInStock: item.quantity },
+        });
+      }
     }
 
     const updatedOrder = await order.save();
@@ -277,6 +329,13 @@ const cancelOrder = async (req, res) => {
     order.cancelReason = cancelReason || 'Not Specified';
     order.cancelComments = cancelComments || '';
     order.cancelledAt = Date.now();
+
+    // Restore stock for each item in the cancelled order
+    for (const item of order.orderItems) {
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { countInStock: item.quantity },
+      });
+    }
 
     const updatedOrder = await order.save();
 
