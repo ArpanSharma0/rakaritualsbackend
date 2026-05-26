@@ -1,5 +1,5 @@
 # RakaRituals API Documentation
-
+//test commit
 This document provide a comprehensive guide for testing all API endpoints.
 
 **Base URL:** `http://localhost:5005`
