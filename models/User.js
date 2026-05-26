@@ -38,6 +38,12 @@ const userSchema = new mongoose.Schema(
       postalCode: { type: String, default: '' },
       country: { type: String, default: '' },
     },
+    wishlist: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Product',
+      },
+    ],
   },
   {
     timestamps: true,
